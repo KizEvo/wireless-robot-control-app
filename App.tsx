@@ -11,17 +11,19 @@ import {
   PermissionsAndroid,
   Pressable,
   Image,
+  Alert,
 } from 'react-native';
 import {SliderComponent} from './Slider';
+import {useAlert} from './useAlert';
 import {Colors} from 'react-native/Libraries/NewAppScreen';
 import BleManager, {
-  BleDisconnectPeripheralEvent,
-  BleManagerDidUpdateValueForCharacteristicEvent,
   BleScanCallbackType,
   BleScanMatchMode,
   BleScanMode,
   Peripheral,
+  BleManagerDidUpdateValueForCharacteristicEvent,
 } from 'react-native-ble-manager';
+import Modal from './Modal';
 
 const BleManagerModule = NativeModules.BleManager;
 const bleManagerEmitter = new NativeEventEmitter(BleManagerModule);
@@ -63,13 +65,12 @@ const CONTROL_ARROWS = [
 
 const App = () => {
   const [isScanning, setIsScanning] = useState(false);
+  const [isScanningRadar, setIsScanningRadar] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [peripherals, setPeripherals] = useState(
     new Map<Peripheral['id'], Peripheral>(),
   );
   const [pwmValue, setPWMValue] = useState(120);
-
-  // console.debug('peripherals map updated', [...peripherals.entries()]);
 
   const addOrUpdatePeripheral = (id: string, updatedPeripheral: Peripheral) => {
     // new Map() enables changing the reference & refreshing UI.
@@ -108,30 +109,6 @@ const App = () => {
     console.debug('[handleStopScan] scan is stopped.');
   };
 
-  // const handleDisconnectedPeripheral = (
-  //   event: BleDisconnectPeripheralEvent,
-  // ) => {
-  //   let peripheral = peripherals.get(event.peripheral);
-  //   if (peripheral) {
-  //     console.debug(
-  //       `[handleDisconnectedPeripheral][${peripheral.id}] previously connected peripheral is disconnected.`,
-  //       event.peripheral,
-  //     );
-  //     addOrUpdatePeripheral(peripheral.id, {...peripheral, connected: false});
-  //   }
-  //   console.debug(
-  //     `[handleDisconnectedPeripheral][${event.peripheral}] disconnected.`,
-  //   );
-  // };
-
-  // const handleUpdateValueForCharacteristic = (
-  //   data: BleManagerDidUpdateValueForCharacteristicEvent,
-  // ) => {
-  //   console.debug(
-  //     `[handleUpdateValueForCharacteristic] received data from '${data.peripheral}' with characteristic='${data.characteristic}' and value='${data.value}'`,
-  //   );
-  // };
-
   const handleDiscoverPeripheral = (peripheral: Peripheral) => {
     console.debug('[handleDiscoverPeripheral] new BLE peripheral=', peripheral);
     if (peripheral.name) {
@@ -140,44 +117,8 @@ const App = () => {
   };
 
   const togglePeripheralConnection = async (peripheral: Peripheral) => {
-    if (peripheral && peripheral.connected) {
-      try {
-        await BleManager.disconnect(peripheral.id);
-      } catch (error) {
-        console.error(
-          `[togglePeripheralConnection][${peripheral.id}] error when trying to disconnect device.`,
-          error,
-        );
-      }
-    } else {
-      await connectPeripheral(peripheral);
-    }
+    await connectPeripheral(peripheral);
   };
-
-  // const retrieveConnected = async () => {
-  //   try {
-  //     const connectedPeripherals = await BleManager.getConnectedPeripherals();
-  //     if (connectedPeripherals.length === 0) {
-  //       console.warn('[retrieveConnected] No connected peripherals found.');
-  //       return;
-  //     }
-
-  //     console.debug(
-  //       '[retrieveConnected] connectedPeripherals',
-  //       connectedPeripherals,
-  //     );
-
-  //     for (var i = 0; i < connectedPeripherals.length; i++) {
-  //       let peripheral = connectedPeripherals[i];
-  //       addOrUpdatePeripheral(peripheral.id, {...peripheral, connected: true});
-  //     }
-  //   } catch (error) {
-  //     console.error(
-  //       '[retrieveConnected] unable to retrieve connected peripherals.',
-  //       error,
-  //     );
-  //   }
-  // };
 
   const connectPeripheral = async (peripheral: Peripheral) => {
     try {
@@ -270,14 +211,10 @@ const App = () => {
         handleDiscoverPeripheral,
       ),
       bleManagerEmitter.addListener('BleManagerStopScan', handleStopScan),
-      // bleManagerEmitter.addListener(
-      //   'BleManagerDisconnectPeripheral',
-      //   handleDisconnectedPeripheral,
-      // ),
-      // bleManagerEmitter.addListener(
-      //   'BleManagerDidUpdateValueForCharacteristic',
-      //   handleUpdateValueForCharacteristic,
-      // ),
+      bleManagerEmitter.addListener(
+        'BleManagerDidUpdateValueForCharacteristic',
+        handleUpdateValueForCharacteristic,
+      ),
     ];
 
     handleAndroidPermissions();
@@ -334,17 +271,33 @@ const App = () => {
     }
   };
 
-  const sendDataToPeripheral = async (item: any) => {
-    const connectedPeripherals = await BleManager.getConnectedPeripherals();
-    if (connectedPeripherals.length === 0 || !isConnected) {
-      console.debug('Please connect a BLE device first');
-      return;
-    }
-    const service = 'ffe0';
-    const characteristic = 'ffe1';
-    const peripheralID = connectedPeripherals[0].id;
-    const dataToBeSent = item.defaultValue + pwmValue / 5;
+  const sendDataToPeripheral = async (item: any, isRadarMode: any) => {
+    let dataToBeSent;
+    let radarFlag = false;
     try {
+      const connectedPeripherals = await BleManager.getConnectedPeripherals();
+
+      if (connectedPeripherals.length === 0 || !isConnected) {
+        console.debug(
+          '[sendDataToPeripheral] Please connect a BLE device first',
+        );
+        useAlert({
+          warningText: 'Please scan and connect a BLE device first',
+          yesButton: 'Scan',
+          callback: startScan,
+        });
+        return radarFlag;
+      } else if (isRadarMode) {
+        dataToBeSent = 52;
+        radarFlag = true;
+      } else {
+        dataToBeSent = item.defaultValue + pwmValue / 5;
+      }
+
+      const service = 'ffe0';
+      const characteristic = 'ffe1';
+      const peripheralID = connectedPeripherals[0].id;
+
       await BleManager.retrieveServices(peripheralID);
       await BleManager.startNotification(peripheralID, service, characteristic);
       await BleManager.writeWithoutResponse(
@@ -353,62 +306,100 @@ const App = () => {
         characteristic,
         [dataToBeSent],
       );
-      console.debug(`Sent: ${[dataToBeSent]}`);
+      console.debug(`[sendDataToPeripheral] App sent: ${[dataToBeSent]}`);
     } catch (error) {
-      console.debug(`Error writing ${characteristic}: ${error}`);
+      console.debug(
+        `[sendDataToPeripheral] Error sending data to peripheral ${error}`,
+      );
     }
+    return radarFlag;
+  };
+
+  const startScanRadar = async () => {
+    console.debug('[startScanRadar] start Radar scanning...');
+    const radarFlag = await sendDataToPeripheral(null, true);
+    if (radarFlag) setIsScanningRadar(true);
+    else console.debug('[startScanRadar] Radar failed to scan');
+    // setIsScanningRadar(true);
+  };
+
+  const handleUpdateValueForCharacteristic = (
+    data: BleManagerDidUpdateValueForCharacteristicEvent,
+  ) => {
+    console.debug(
+      `[handleUpdateValueForCharacteristic] received data from '${data.peripheral}' with characteristic='${data.characteristic}' and value='${data.value}'`,
+    );
   };
 
   const RenderItem = ({item}: {item: Peripheral}) => {
     const backgroundColor = item.connected ? '#069400' : Colors.white;
+    const color = backgroundColor === Colors.white ? 'black' : 'white';
     return (
       <View style={[styles.row, {backgroundColor}]}>
-        <Text style={styles.peripheralName}>
-          {/* completeLocalName (item.name) & shortAdvertisingName (advertising.localName) may not always be the same */}
+        <Text style={[styles.peripheralName, {color}]}>
           {item.name}
           {item.connecting && ' - Connecting...'}
         </Text>
-        <Text style={styles.peripheralId}>{item.id}</Text>
+        <Text style={[styles.peripheralId, {color}]}>{item.id}</Text>
       </View>
     );
   };
+
+  if (isScanningRadar) {
+    return (
+      <>
+        <StatusBar />
+        <SafeAreaView>
+          <Modal
+            setIsScanningRadar={setIsScanningRadar}
+            sendDataToPeripheral={sendDataToPeripheral}
+          />
+        </SafeAreaView>
+      </>
+    );
+  }
 
   return (
     <>
       <StatusBar />
       <SafeAreaView style={styles.body}>
-        <Pressable style={styles.scanButton} onPress={startScan}>
-          <Text style={styles.scanButtonText}>
-            {isScanning ? 'Scanning...' : 'Scan Bluetooth'}
-          </Text>
-        </Pressable>
-        {/* 
-        <Pressable style={styles.scanButton} onPress={retrieveConnected}>
-          <Text style={styles.scanButtonText}>
-            {'Retrieve connected peripherals'}
-          </Text>
-        </Pressable> */}
-        {Array.from(peripherals.values()).length === 0 && (
-          <View style={styles.row}>
-            <Text style={styles.noPeripherals}>
-              No Peripherals, press "Scan Bluetooth" above.
-            </Text>
+        <View style={styles.bluetoothContainer}>
+          <View style={{flex: 1, flexDirection: 'row'}}>
+            <Pressable style={styles.scanButton} onPress={startScan}>
+              <Text style={styles.scanButtonText}>
+                {isScanning ? 'Scanning...' : 'Scan Bluetooth'}
+              </Text>
+            </Pressable>
+            <Pressable style={styles.scanButton} onPress={startScanRadar}>
+              <Text style={styles.scanButtonText}>Scan Radar</Text>
+            </Pressable>
           </View>
-        )}
-        <View style={{flex: 1, flexDirection: 'row'}}>
-          {Array.from(peripherals.values()).map(item => {
-            return (
-              <Pressable
-                onPress={() => {
-                  return isConnected
-                    ? console.debug('User already connected to a device')
-                    : togglePeripheralConnection(item);
-                }}
-                key={item.id}>
-                <RenderItem item={item} />
-              </Pressable>
-            );
-          })}
+          {Array.from(peripherals.values()).length === 0 && (
+            <View style={styles.row}>
+              <Text style={styles.noPeripherals}>
+                No Peripherals, press "Scan Bluetooth" above.
+              </Text>
+            </View>
+          )}
+          <View style={{flex: 1, flexDirection: 'row'}}>
+            {Array.from(peripherals.values()).map(item => {
+              return (
+                <Pressable
+                  onPress={() => {
+                    return isConnected
+                      ? useAlert({
+                          warningText: 'User already connected to a device',
+                          yesButton: 'Return',
+                          callback: null,
+                        })
+                      : togglePeripheralConnection(item);
+                  }}
+                  key={item.id}>
+                  <RenderItem item={item} />
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
         <View style={styles.mainControlContainer}>
           <View style={styles.moveControlContainer}>
@@ -416,7 +407,7 @@ const App = () => {
               return (
                 <Pressable
                   key={item.id}
-                  onPress={() => sendDataToPeripheral(item)}
+                  onPress={() => sendDataToPeripheral(item, false)}
                   style={({pressed}) => [
                     {
                       backgroundColor: pressed ? '#9cbff7' : 'white',
@@ -543,6 +534,11 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: 20,
     margin: 20,
+  },
+  bluetoothContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 
