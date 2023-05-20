@@ -71,6 +71,7 @@ const App = () => {
     new Map<Peripheral['id'], Peripheral>(),
   );
   const [pwmValue, setPWMValue] = useState(120);
+  const [radarData, setRadarData] = useState<number[]>([]);
 
   const addOrUpdatePeripheral = (id: string, updatedPeripheral: Peripheral) => {
     // new Map() enables changing the reference & refreshing UI.
@@ -329,6 +330,24 @@ const App = () => {
     console.debug(
       `[handleUpdateValueForCharacteristic] received data from '${data.peripheral}' with characteristic='${data.characteristic}' and value='${data.value}'`,
     );
+    setRadarData(data.value);
+    return;
+  };
+
+  const readDataFromPeripherals = async () => {
+    try {
+      const connectedPeripherals = await BleManager.getConnectedPeripherals();
+      const service = 'ffe0';
+      const characteristic = 'ffe1';
+      const peripheralID = connectedPeripherals[0].id;
+
+      await BleManager.retrieveServices(peripheralID);
+      await BleManager.startNotification(peripheralID, service, characteristic);
+      await BleManager.read(peripheralID, service, characteristic);
+      console.debug('[readDataFromPeripherals] Read');
+    } catch (error) {
+      console.log('[readDataFromPeripherals] Error occured');
+    }
   };
 
   const RenderItem = ({item}: {item: Peripheral}) => {
@@ -353,6 +372,7 @@ const App = () => {
           <Modal
             setIsScanningRadar={setIsScanningRadar}
             sendDataToPeripheral={sendDataToPeripheral}
+            ultraSonicSensorData={radarData}
           />
         </SafeAreaView>
       </>

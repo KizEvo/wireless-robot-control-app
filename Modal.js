@@ -15,36 +15,38 @@ const DEFAULT_DEGREE_VALUE = [
 
 const DEFAULT_LINE_DEGREE_VALUE = [
   {
-    id: 1,
+    id: 30,
     top: -75,
     left: -25,
     rotate: '135deg',
   },
   {
-    id: 2,
+    id: 60,
     top: -30,
     left: -2,
     rotate: '165deg',
   },
   {
-    id: 3,
+    id: 90,
     top: 20,
     left: -3,
     rotate: '195deg',
   },
   {
-    id: 4,
+    id: 120,
     top: 63,
     left: -27,
     rotate: '225deg',
   },
   {
-    id: 5,
+    id: 150,
     top: 88,
     left: -68,
     rotate: '255deg',
   },
 ];
+
+const ultraSonicSensorData = [30, 20, 90, 25, 150, 30];
 
 const DEFAULT_SHOW_SCANNED_OBJECT_POSITION = [
   {id: 1, top: 20},
@@ -127,6 +129,35 @@ const Modal = props => {
           <View style={[styles.arcLeft, {zIndex: 3}]}>
             {DEFAULT_LINE_DEGREE_VALUE.map(line => {
               const {top, left, rotate, id} = line;
+              const index = props.ultraSonicSensorData.indexOf(id);
+
+              let padding = 5;
+              let borderWidth = 2;
+
+              let indexOfDistance = 0;
+              let radarDistanceProportionalToSensorData = 0;
+              let distance = 0;
+
+              if (index < 0) {
+                padding = 0;
+                borderWidth = 0;
+              } else {
+                indexOfDistance = index + 1;
+
+                distance = props.ultraSonicSensorData[indexOfDistance];
+
+                if (distance <= 10) {
+                  radarDistanceProportionalToSensorData = 150;
+                } else if (distance > 10 && distance <= 20) {
+                  radarDistanceProportionalToSensorData = 90;
+                } else if (distance > 20 && distance <= 30) {
+                  radarDistanceProportionalToSensorData = 20;
+                } else {
+                  padding = 0;
+                  borderWidth = 0;
+                }
+              }
+
               return (
                 <View
                   key={id}
@@ -146,13 +177,13 @@ const Modal = props => {
                   <View
                     style={{
                       position: 'absolute',
-                      backgroundColor: '#5ebc65',
+                      backgroundColor: '#ff5338',
                       borderColor: '#51995a',
-                      borderWidth: 2,
-                      padding: 5,
+                      borderWidth,
+                      padding,
                       borderRadius: 100,
                       top: -6,
-                      left: 20,
+                      left: radarDistanceProportionalToSensorData, // 20, 90, 150 : ~30cm, ~20cm, ~10cm
                       zIndex: 2,
                     }}
                   />
