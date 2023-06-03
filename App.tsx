@@ -272,7 +272,11 @@ const App = () => {
     }
   };
 
-  const sendDataToPeripheral = async (item: any, isRadarMode: any) => {
+  const sendDataToPeripheral = async (
+    item: any,
+    isRadarMode: any,
+    isPressedOut: any,
+  ) => {
     let dataToBeSent;
     let radarFlag = false;
     try {
@@ -291,6 +295,8 @@ const App = () => {
       } else if (isRadarMode) {
         dataToBeSent = 52;
         radarFlag = true;
+      } else if (isPressedOut) {
+        dataToBeSent = 53;
       } else {
         dataToBeSent = item.defaultValue + pwmValue / 5;
       }
@@ -318,7 +324,7 @@ const App = () => {
 
   const startScanRadar = async () => {
     console.debug('[startScanRadar] start Radar scanning...');
-    const radarFlag = await sendDataToPeripheral(null, true);
+    const radarFlag = await sendDataToPeripheral(null, true, false);
     if (radarFlag) setIsScanningRadar(true);
     else console.debug('[startScanRadar] Radar failed to scan');
     // setIsScanningRadar(true);
@@ -332,22 +338,6 @@ const App = () => {
     );
     setRadarData(data.value);
     return;
-  };
-
-  const readDataFromPeripherals = async () => {
-    try {
-      const connectedPeripherals = await BleManager.getConnectedPeripherals();
-      const service = 'ffe0';
-      const characteristic = 'ffe1';
-      const peripheralID = connectedPeripherals[0].id;
-
-      await BleManager.retrieveServices(peripheralID);
-      await BleManager.startNotification(peripheralID, service, characteristic);
-      await BleManager.read(peripheralID, service, characteristic);
-      console.debug('[readDataFromPeripherals] Read');
-    } catch (error) {
-      console.log('[readDataFromPeripherals] Error occured');
-    }
   };
 
   const RenderItem = ({item}: {item: Peripheral}) => {
@@ -427,7 +417,8 @@ const App = () => {
               return (
                 <Pressable
                   key={item.id}
-                  onPress={() => sendDataToPeripheral(item, false)}
+                  onPressIn={() => sendDataToPeripheral(item, false, false)}
+                  onPressOut={() => sendDataToPeripheral(item, false, true)}
                   style={({pressed}) => [
                     {
                       backgroundColor: pressed ? '#9cbff7' : 'white',

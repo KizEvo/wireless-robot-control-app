@@ -81,7 +81,7 @@ const Modal = props => {
     console.debug(
       '[scanAnimation] Scan animation started, repeating animation 4 times',
     );
-    props.sendDataToPeripheral(null, true);
+    props.sendDataToPeripheral(null, true, false);
   };
 
   const handleDegValuePlacement = value => {
